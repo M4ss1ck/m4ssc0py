@@ -22,6 +22,57 @@ interface BackupError {
   file: string | null;
 }
 
+function ChipCarousel({ items, onRemove }: { items: string[]; onRemove: (item: string) => void }) {
+  const containerRef = { current: null as HTMLDivElement | null };
+
+  const scrollLeft = () => {
+    containerRef.current?.scrollBy({ left: -120, behavior: "smooth" });
+  };
+
+  const scrollRight = () => {
+    containerRef.current?.scrollBy({ left: 120, behavior: "smooth" });
+  };
+
+  return (
+    <div class="chip-carousel">
+      <button
+        type="button"
+        class="carousel-arrow"
+        onClick={scrollLeft}
+        aria-label="Scroll left"
+      >
+        ‹
+      </button>
+      <div
+        class="carousel-chips"
+        ref={(el) => { containerRef.current = el; }}
+      >
+        {items.map((item) => (
+          <span key={item} class="tag">
+            {item}
+            <button
+              type="button"
+              class="tag-remove"
+              onClick={() => onRemove(item)}
+              aria-label={`Remove ${item}`}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+      <button
+        type="button"
+        class="carousel-arrow"
+        onClick={scrollRight}
+        aria-label="Scroll right"
+      >
+        ›
+      </button>
+    </div>
+  );
+}
+
 function FormScreen() {
   const {
     sourcePath,
@@ -139,21 +190,10 @@ function FormScreen() {
             </button>
           </form>
         </div>
-        <div class="tags-container">
-          {blacklist.map((item) => (
-            <span key={item} class="tag">
-              {item}
-              <button
-                type="button"
-                class="tag-remove"
-                onClick={() => removeBlacklistItem(item)}
-                aria-label={`Remove ${item}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
+        <ChipCarousel
+          items={blacklist}
+          onRemove={removeBlacklistItem}
+        />
       </div>
 
       <div class="options-row">
