@@ -64,12 +64,6 @@ async fn backup_directory(
         .git_global(false)
         .git_exclude(true);
 
-    // Add custom ignore patterns for blacklisted folders
-    for pattern in &blacklist {
-        // These patterns will match directory names anywhere in the tree
-        builder.add_custom_ignore_filename(".m4ssc0pyignore");
-    }
-
     let walker = builder.build();
 
     for entry in walker {

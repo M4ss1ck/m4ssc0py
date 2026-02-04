@@ -12,9 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "m4ssc0py",
-        "width": 800,
-        "height": 600
+        "title": "M4SS C0PY",
+        "width": 600,
+        "height": 500
       }
     ],
     "security": {
