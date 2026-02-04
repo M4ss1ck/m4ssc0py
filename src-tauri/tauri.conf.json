@@ -14,7 +14,8 @@
       {
         "title": "M4SS C0PY",
         "width": 600,
-        "height": 500
+        "height": 300,
+        "resizable": false
       }
     ],
     "security": {

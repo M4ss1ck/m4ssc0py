@@ -1,7 +1,8 @@
-import { useState, useEffect } from "preact/hooks";
+import { useEffect } from "preact/hooks";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useBackupStore } from "./store";
 import "./App.css";
 
 interface BackupProgress {
@@ -21,24 +22,272 @@ interface BackupError {
   file: string | null;
 }
 
+function FormScreen() {
+  const {
+    sourcePath,
+    targetPath,
+    blacklist,
+    respectGitignore,
+    includeSourceDir,
+    setSourcePath,
+    setTargetPath,
+    addBlacklistItem,
+    removeBlacklistItem,
+    setRespectGitignore,
+    setIncludeSourceDir,
+    setScreen,
+    setProgress,
+    setCopiedCount,
+    setTotalCount,
+    setCurrentFile,
+    setMessage,
+    setSuccess,
+  } = useBackupStore();
+
+  const browseSource = async () => {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: "Select Source Directory",
+    });
+    if (selected && typeof selected === "string") {
+      setSourcePath(selected);
+    }
+  };
+
+  const browseTarget = async () => {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: "Select Target Directory",
+    });
+    if (selected && typeof selected === "string") {
+      setTargetPath(selected);
+    }
+  };
+
+  const handleAddBlacklist = (e: Event) => {
+    e.preventDefault();
+    const input = (e.target as HTMLFormElement).querySelector("input");
+    if (input && input.value.trim()) {
+      addBlacklistItem(input.value.trim());
+      input.value = "";
+    }
+  };
+
+  const startBackup = async () => {
+    if (!sourcePath || !targetPath) {
+      return;
+    }
+
+    setScreen("progress");
+    setProgress(0);
+    setCopiedCount(0);
+    setTotalCount(0);
+    setCurrentFile("");
+
+    try {
+      await invoke("backup_directory", {
+        sourcePath,
+        targetPath,
+        blacklist,
+        respectGitignore,
+        includeSourceDir,
+      });
+    } catch (error) {
+      setMessage(`Error: ${error}`);
+      setSuccess(false);
+    }
+  };
+
+  return (
+    <div class="screen form-screen">
+      <div class="path-inputs">
+        <div class="path-row">
+          <span class="path-label">From</span>
+          <input
+            type="text"
+            value={sourcePath}
+            onInput={(e) => setSourcePath(e.currentTarget.value)}
+            placeholder="Source directory..."
+          />
+          <button type="button" onClick={browseSource} class="browse-btn">
+            📁
+          </button>
+        </div>
+        <div class="path-row">
+          <span class="path-label">To</span>
+          <input
+            type="text"
+            value={targetPath}
+            onInput={(e) => setTargetPath(e.currentTarget.value)}
+            placeholder="Target directory..."
+          />
+          <button type="button" onClick={browseTarget} class="browse-btn">
+            📁
+          </button>
+        </div>
+      </div>
+
+      <div class="blacklist-section">
+        <div class="blacklist-header">
+          <span class="section-label">BLACKLIST</span>
+          <form onSubmit={handleAddBlacklist} class="add-form">
+            <input type="text" placeholder="Add item..." />
+            <button type="submit" class="add-btn">
+              +
+            </button>
+          </form>
+        </div>
+        <div class="tags-container">
+          {blacklist.map((item) => (
+            <span key={item} class="tag">
+              {item}
+              <button
+                type="button"
+                class="tag-remove"
+                onClick={() => removeBlacklistItem(item)}
+                aria-label={`Remove ${item}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div class="options-row">
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            checked={includeSourceDir}
+            onChange={(e) => setIncludeSourceDir(e.currentTarget.checked)}
+          />
+          <span>Include source directory</span>
+        </label>
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            checked={respectGitignore}
+            onChange={(e) => setRespectGitignore(e.currentTarget.checked)}
+          />
+          <span>Respect .gitignore</span>
+        </label>
+      </div>
+
+      <button
+        type="button"
+        class="action-btn"
+        onClick={startBackup}
+        disabled={!sourcePath || !targetPath}
+      >
+        Start Backup
+      </button>
+    </div>
+  );
+}
+
+function ProgressScreen() {
+  const { progress, currentFile, copiedCount, totalCount } = useBackupStore();
+
+  // Simple file progress (simulated based on file size estimate)
+  const currentFileProgress = 100;
+
+  return (
+    <div class="screen progress-screen">
+      <div class="progress-section">
+        <div class="progress-item">
+          <div class="progress-header">
+            <span class="progress-label">Total Progress</span>
+            <span class="progress-value">{progress}%</span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar" style={{ width: `${progress}%` }} />
+          </div>
+          <div class="progress-info">
+            {copiedCount} / {totalCount} files
+          </div>
+        </div>
+
+        <div class="progress-item">
+          <div class="progress-header">
+            <span class="progress-label">Current File</span>
+            <span class="progress-value">{currentFileProgress}%</span>
+          </div>
+          <div class="progress-bar-container">
+            <div
+              class="progress-bar secondary"
+              style={{ width: `${currentFileProgress}%` }}
+            />
+          </div>
+          <div class="progress-info current-file-name" title={currentFile}>
+            {currentFile || "Preparing..."}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompleteScreen() {
+  const { success, message, errors, copiedCount, reset } = useBackupStore();
+
+  const handleReset = () => {
+    reset();
+  };
+
+  return (
+    <div class="screen complete-screen">
+      <div class="complete-content">
+        <div class={`status-icon ${success ? "success" : "error"}`}>
+          {success ? "✓" : "✗"}
+        </div>
+        <h2 class="status-message">{message}</h2>
+        <div class="stats">
+          <div class="stat-item">
+            <span class="stat-value">{copiedCount}</span>
+            <span class="stat-label">Files copied</span>
+          </div>
+          {errors.length > 0 && (
+            <div class="stat-item">
+              <span class="stat-value error">{errors.length}</span>
+              <span class="stat-label">Errors</span>
+            </div>
+          )}
+        </div>
+
+        {errors.length > 0 && (
+          <details class="error-details">
+            <summary>View errors</summary>
+            <ul>
+              {errors.slice(0, 10).map((error, i) => (
+                <li key={i}>{error}</li>
+              ))}
+              {errors.length > 10 && <li>...and {errors.length - 10} more</li>}
+            </ul>
+          </details>
+        )}
+      </div>
+
+      <button type="button" class="action-btn" onClick={handleReset}>
+        Start New Backup
+      </button>
+    </div>
+  );
+}
+
 function App() {
-  const [sourcePath, setSourcePath] = useState("");
-  const [targetPath, setTargetPath] = useState("");
-  const [blacklist, setBlacklist] = useState<string[]>([
-    "node_modules",
-    ".git",
-    "dist",
-  ]);
-  const [newTag, setNewTag] = useState("");
-  const [isRunning, setIsRunning] = useState(false);
-  const [respectGitignore, setRespectGitignore] = useState(false);
-  const [includeSourceDir, setIncludeSourceDir] = useState(true);
-  const [progress, setProgress] = useState(0);
-  const [currentFile, setCurrentFile] = useState("");
-  const [copiedCount, setCopiedCount] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
-  const [statusMessage, setStatusMessage] = useState("");
-  const [errors, setErrors] = useState<string[]>([]);
+  const {
+    currentScreen,
+    setScreen,
+    setProgress,
+    setCurrentFile,
+    setCopiedCount,
+    setTotalCount,
+    setSuccess,
+    setMessage,
+    addError,
+  } = useBackupStore();
 
   useEffect(() => {
     let unlistenProgress: UnlistenFn;
@@ -63,20 +312,16 @@ function App() {
         "backup-complete",
         (event) => {
           const { success, message } = event.payload;
-          setStatusMessage(message);
-          setIsRunning(false);
-          if (success) {
-            setProgress(100);
-          }
+          setMessage(message);
+          setSuccess(success);
+          setProgress(100);
+          setScreen("complete");
         }
       );
 
       unlistenError = await listen<BackupError>("backup-error", (event) => {
         const { message, file } = event.payload;
-        setErrors((prev) => [
-          ...prev,
-          file ? `${file}: ${message}` : message,
-        ]);
+        addError(file ? `${file}: ${message}` : message);
       });
     };
 
@@ -89,231 +334,11 @@ function App() {
     };
   }, []);
 
-  const browseSource = async () => {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: "Select Source Directory",
-    });
-    if (selected && typeof selected === "string") {
-      setSourcePath(selected);
-    }
-  };
-
-  const browseTarget = async () => {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: "Select Target Directory",
-    });
-    if (selected && typeof selected === "string") {
-      setTargetPath(selected);
-    }
-  };
-
-  const addTag = () => {
-    const tag = newTag.trim();
-    if (tag && !blacklist.includes(tag)) {
-      setBlacklist([...blacklist, tag]);
-      setNewTag("");
-    }
-  };
-
-  const removeTag = (tagToRemove: string) => {
-    setBlacklist(blacklist.filter((tag) => tag !== tagToRemove));
-  };
-
-  const startBackup = async () => {
-    if (!sourcePath || !targetPath) {
-      setStatusMessage("Please select both source and target directories");
-      return;
-    }
-
-    setIsRunning(true);
-    setErrors([]);
-    setProgress(0);
-    setCopiedCount(0);
-    setTotalCount(0);
-    setCurrentFile("");
-    setStatusMessage("Starting backup...");
-
-    try {
-      await invoke("backup_directory", {
-        sourcePath,
-        targetPath,
-        blacklist,
-        respectGitignore,
-        includeSourceDir,
-      });
-    } catch (error) {
-      setStatusMessage(`Error: ${error}`);
-      setIsRunning(false);
-    }
-  };
-
-  const handleTagKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      addTag();
-    }
-  };
-
   return (
     <main class="container">
-      <h1>M4SS C0PY</h1>
-      <p class="subtitle">Fast directory backup with smart filtering</p>
-
-      <div class="form-section">
-        <div class="input-row">
-          <label>Source Directory</label>
-          <div class="input-group">
-            <input
-              type="text"
-              value={sourcePath}
-              onInput={(e) => setSourcePath(e.currentTarget.value)}
-              placeholder="/path/to/source"
-              disabled={isRunning}
-            />
-            <button
-              type="button"
-              onClick={browseSource}
-              disabled={isRunning}
-              class="browse-btn"
-            >
-              Browse
-            </button>
-          </div>
-        </div>
-
-        <div class="input-row">
-          <label>Target Directory</label>
-          <div class="input-group">
-            <input
-              type="text"
-              value={targetPath}
-              onInput={(e) => setTargetPath(e.currentTarget.value)}
-              placeholder="/path/to/backup"
-              disabled={isRunning}
-            />
-            <button
-              type="button"
-              onClick={browseTarget}
-              disabled={isRunning}
-              class="browse-btn"
-            >
-              Browse
-            </button>
-          </div>
-        </div>
-
-        <div class="input-row">
-          <label>Blacklisted Folders</label>
-          <div class="blacklist-section">
-            <div class="input-group">
-              <input
-                type="text"
-                value={newTag}
-                onInput={(e) => setNewTag(e.currentTarget.value)}
-                onKeyDown={handleTagKeyDown}
-                placeholder="Add folder to ignore..."
-                disabled={isRunning}
-              />
-              <button
-                type="button"
-                onClick={addTag}
-                disabled={isRunning || !newTag.trim()}
-                class="add-btn"
-              >
-                Add
-              </button>
-            </div>
-            <div class="tags-container">
-              {blacklist.map((tag) => (
-                <span key={tag} class="tag">
-                  {tag}
-                  <button
-                    type="button"
-                    class="tag-remove"
-                    onClick={() => removeTag(tag)}
-                    disabled={isRunning}
-                    aria-label={`Remove ${tag}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div class="checkbox-row">
-          <label class="checkbox-label">
-            <input
-              type="checkbox"
-              checked={includeSourceDir}
-              onChange={(e) => setIncludeSourceDir(e.currentTarget.checked)}
-              disabled={isRunning}
-            />
-            <span>Include source folder in backup</span>
-          </label>
-          <label class="checkbox-label">
-            <input
-              type="checkbox"
-              checked={respectGitignore}
-              onChange={(e) => setRespectGitignore(e.currentTarget.checked)}
-              disabled={isRunning}
-            />
-            <span>Respect .gitignore files</span>
-          </label>
-        </div>
-      </div>
-
-      <button
-        type="button"
-        class="start-btn"
-        onClick={startBackup}
-        disabled={isRunning || !sourcePath || !targetPath}
-      >
-        {isRunning ? "Backing Up..." : "Start Backup"}
-      </button>
-
-      {(isRunning || statusMessage) && (
-        <div class="progress-section">
-          <div class="progress-bar-container">
-            <div class="progress-bar" style={{ width: `${progress}%` }} />
-          </div>
-          <div class="progress-info">
-            <span class="progress-percent">{progress}%</span>
-            {totalCount > 0 && (
-              <span class="file-count">
-                {copiedCount} / {totalCount} files
-              </span>
-            )}
-          </div>
-          {currentFile && (
-            <div class="current-file" title={currentFile}>
-              Copying: {currentFile}
-            </div>
-          )}
-          {statusMessage && <div class="status-message">{statusMessage}</div>}
-        </div>
-      )}
-
-      {errors.length > 0 && (
-        <div class="errors-section">
-          <details>
-            <summary>Errors ({errors.length})</summary>
-            <ul>
-              {errors.slice(0, 10).map((error, i) => (
-                <li key={i}>{error}</li>
-              ))}
-              {errors.length > 10 && (
-                <li>...and {errors.length - 10} more</li>
-              )}
-            </ul>
-          </details>
-        </div>
-      )}
+      {currentScreen === "form" && <FormScreen />}
+      {currentScreen === "progress" && <ProgressScreen />}
+      {currentScreen === "complete" && <CompleteScreen />}
     </main>
   );
 }
