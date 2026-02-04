@@ -33,7 +33,7 @@ h1 {
   font-size: 1.8rem;
   font-weight: 700;
   text-align: center;
-  background: linear-gradient(90deg, #00d9ff, #a855f7, #ec4899);
+  background: linear-gradient(90deg, #f7d78c, #f5cb5c, #f7d78c);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -85,8 +85,8 @@ input[type="text"] {
 
 input[type="text"]:focus {
   outline: none;
-  border-color: #00d9ff;
-  box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.15);
+  border-color: #f5cb5c;
+  box-shadow: 0 0 0 3px rgba(245, 203, 92, 0.15);
 }
 
 input[type="text"]::placeholder {
@@ -145,8 +145,8 @@ button:disabled {
   padding: 4px 10px;
   font-size: 0.8rem;
   font-weight: 500;
-  background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(236, 72, 153, 0.3));
-  border: 1px solid rgba(168, 85, 247, 0.4);
+  background: linear-gradient(135deg, rgba(247, 215, 140, 0.3), rgba(245, 203, 92, 0.3));
+  border: 1px solid rgba(245, 203, 92, 0.4);
   border-radius: 20px;
   color: #e8eaed;
 }
@@ -188,7 +188,7 @@ button:disabled {
 .checkbox-label input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: #00d9ff;
+  accent-color: #f5cb5c;
   cursor: pointer;
 }
 
@@ -205,14 +205,14 @@ button:disabled {
   padding: 14px 24px;
   font-size: 1rem;
   font-weight: 600;
-  background: linear-gradient(135deg, #00d9ff, #0ea5e9);
+  background: linear-gradient(135deg, #f7d78c, #f5cb5c);
   color: #0f172a;
-  box-shadow: 0 4px 20px rgba(0, 217, 255, 0.3);
+  box-shadow: 0 4px 20px rgba(245, 203, 92, 0.3);
 }
 
 .start-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 25px rgba(0, 217, 255, 0.4);
+  box-shadow: 0 6px 25px rgba(245, 203, 92, 0.4);
 }
 
 .start-btn:active:not(:disabled) {
@@ -239,7 +239,7 @@ button:disabled {
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, #00d9ff, #a855f7);
+  background: linear-gradient(90deg, #f7d78c, #f5cb5c);
   border-radius: 4px;
   transition: width 0.3s ease;
 }
@@ -253,7 +253,7 @@ button:disabled {
 
 .progress-percent {
   font-weight: 600;
-  color: #00d9ff;
+  color: #f5cb5c;
 }
 
 .file-count {
