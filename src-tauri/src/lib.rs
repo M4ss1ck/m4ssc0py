@@ -32,6 +32,8 @@ async fn backup_directory(
     source_path: String,
     target_path: String,
     blacklist: Vec<String>,
+    respect_gitignore: bool,
+    include_source_dir: bool,
 ) -> Result<BackupComplete, String> {
     let source = Path::new(&source_path);
     let target = Path::new(&target_path);
@@ -45,13 +47,24 @@ async fn backup_directory(
         return Err(format!("Source path is not a directory: {}", source_path));
     }
 
+    // Determine effective target: if include_source_dir is true, append source folder name
+    let effective_target = if include_source_dir {
+        if let Some(source_name) = source.file_name() {
+            target.join(source_name)
+        } else {
+            target.to_path_buf()
+        }
+    } else {
+        target.to_path_buf()
+    };
+
     // Create target directory if it doesn't exist
-    if let Err(e) = fs::create_dir_all(target) {
+    if let Err(e) = fs::create_dir_all(&effective_target) {
         return Err(format!("Failed to create target directory: {}", e));
     }
 
     // First pass: count total files for progress calculation
-    let total_count = count_files(&source_path, &blacklist);
+    let total_count = count_files(&source_path, &blacklist, respect_gitignore);
 
     let mut copied_count: u64 = 0;
     let mut errors: Vec<String> = Vec::new();
@@ -60,9 +73,9 @@ async fn backup_directory(
     let mut builder = WalkBuilder::new(source);
     builder
         .hidden(false) // Don't skip hidden files by default
-        .git_ignore(true) // Respect .gitignore files
+        .git_ignore(respect_gitignore) // Optionally respect .gitignore files
         .git_global(false)
-        .git_exclude(true);
+        .git_exclude(respect_gitignore);
 
     let walker = builder.build();
 
@@ -86,7 +99,7 @@ async fn backup_directory(
                     Err(_) => continue,
                 };
 
-                let dest_path = target.join(relative_path);
+                let dest_path = effective_target.join(relative_path);
 
                 if path.is_dir() {
                     // Check if this directory or any parent is blacklisted
@@ -192,11 +205,16 @@ async fn backup_directory(
 }
 
 /// Count total files to copy (for progress calculation)
-fn count_files(source_path: &str, blacklist: &[String]) -> u64 {
+fn count_files(source_path: &str, blacklist: &[String], respect_gitignore: bool) -> u64 {
     let source = Path::new(source_path);
     let mut count: u64 = 0;
 
-    let builder = WalkBuilder::new(source);
+    let mut builder = WalkBuilder::new(source);
+    builder
+        .hidden(false)
+        .git_ignore(respect_gitignore)
+        .git_global(false)
+        .git_exclude(respect_gitignore);
     let walker = builder.build();
 
     for entry in walker {

@@ -31,6 +31,8 @@ function App() {
   ]);
   const [newTag, setNewTag] = useState("");
   const [isRunning, setIsRunning] = useState(false);
+  const [respectGitignore, setRespectGitignore] = useState(false);
+  const [includeSourceDir, setIncludeSourceDir] = useState(true);
   const [progress, setProgress] = useState(0);
   const [currentFile, setCurrentFile] = useState("");
   const [copiedCount, setCopiedCount] = useState(0);
@@ -140,6 +142,8 @@ function App() {
         sourcePath,
         targetPath,
         blacklist,
+        respectGitignore,
+        includeSourceDir,
       });
     } catch (error) {
       setStatusMessage(`Error: ${error}`);
@@ -240,6 +244,27 @@ function App() {
               ))}
             </div>
           </div>
+        </div>
+
+        <div class="checkbox-row">
+          <label class="checkbox-label">
+            <input
+              type="checkbox"
+              checked={includeSourceDir}
+              onChange={(e) => setIncludeSourceDir(e.currentTarget.checked)}
+              disabled={isRunning}
+            />
+            <span>Include source folder in backup</span>
+          </label>
+          <label class="checkbox-label">
+            <input
+              type="checkbox"
+              checked={respectGitignore}
+              onChange={(e) => setRespectGitignore(e.currentTarget.checked)}
+              disabled={isRunning}
+            />
+            <span>Respect .gitignore files</span>
+          </label>
         </div>
       </div>
 
