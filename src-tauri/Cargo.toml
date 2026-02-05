@@ -28,4 +28,5 @@ tauri-plugin-shell = "2"
 # File copier dependencies
 ignore = "0.4"
 fs_extra = "1.3"
+globset = "0.4"
 

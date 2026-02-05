@@ -1953,6 +1953,7 @@ name = "m4ssc0py"
 version = "0.1.2"
 dependencies = [
  "fs_extra",
+ "globset",
  "ignore",
  "serde",
  "serde_json",
