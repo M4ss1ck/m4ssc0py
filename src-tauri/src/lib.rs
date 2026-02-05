@@ -1,13 +1,15 @@
+use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
 use serde::Serialize;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
 
 #[derive(Clone, Serialize)]
 struct BackupProgress {
     current_file: String,
     copied_count: u64,
+    skipped_count: u64,
     total_count: u64,
 }
 
@@ -15,6 +17,7 @@ struct BackupProgress {
 struct BackupComplete {
     success: bool,
     copied_count: u64,
+    skipped_count: u64,
     message: String,
 }
 
@@ -24,166 +27,293 @@ struct BackupError {
     file: Option<String>,
 }
 
-/// Recursively copy a directory using the `ignore` crate for fast traversal
-/// and blacklist filtering.
+/// Build a GlobSet from a list of patterns
+fn build_glob_set(patterns: &[String]) -> GlobSet {
+    let mut builder = GlobSetBuilder::new();
+
+    for pattern in patterns {
+        match Glob::new(pattern) {
+            Ok(glob) => {
+                builder.add(glob);
+            }
+            Err(_) => {
+                // If pattern is invalid as glob, treat it as literal match
+                if let Ok(glob) = Glob::new(&format!("**/{}", pattern)) {
+                    builder.add(glob);
+                }
+            }
+        }
+    }
+
+    builder.build().unwrap_or_else(|_| GlobSet::empty())
+}
+
+/// Check if a path should be blacklisted using glob patterns
+fn is_blacklisted(relative_path: &Path, glob_set: &GlobSet) -> bool {
+    // Check if the full path matches
+    if glob_set.is_match(relative_path) {
+        return true;
+    }
+
+    // Check if any component matches (for simple patterns like "node_modules")
+    for component in relative_path.components() {
+        if let std::path::Component::Normal(name) = component {
+            if glob_set.is_match(name) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// Find an available filename by adding _1, _2, etc. suffix
+fn find_available_name(path: &Path) -> PathBuf {
+    if !path.exists() {
+        return path.to_path_buf();
+    }
+
+    let stem = path
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let ext = path
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    let parent = path.parent().unwrap_or(Path::new(""));
+
+    let mut counter = 1;
+    loop {
+        let new_name = format!("{}_{}{}", stem, counter, ext);
+        let new_path = parent.join(new_name);
+        if !new_path.exists() {
+            return new_path;
+        }
+        counter += 1;
+        if counter > 10000 {
+            // Safety limit
+            return path.to_path_buf();
+        }
+    }
+}
+
+/// Recursively copy directories/files using the `ignore` crate for fast traversal
+/// and glob-based blacklist filtering.
 #[tauri::command]
 async fn backup_directory(
     app: AppHandle,
-    source_path: String,
+    source_paths: Vec<String>,
     target_path: String,
     blacklist: Vec<String>,
     respect_gitignore: bool,
     include_source_dir: bool,
+    collision_mode: String,
 ) -> Result<BackupComplete, String> {
-    let source = Path::new(&source_path);
     let target = Path::new(&target_path);
 
-    // Validate source exists
-    if !source.exists() {
-        return Err(format!("Source path does not exist: {}", source_path));
+    // Validate we have sources
+    if source_paths.is_empty() {
+        return Err("No source paths provided".to_string());
     }
 
-    if !source.is_dir() {
-        return Err(format!("Source path is not a directory: {}", source_path));
-    }
-
-    // Determine effective target: if include_source_dir is true, append source folder name
-    let effective_target = if include_source_dir {
-        if let Some(source_name) = source.file_name() {
-            target.join(source_name)
-        } else {
-            target.to_path_buf()
+    // Validate all sources exist
+    for source_path in &source_paths {
+        let source = Path::new(source_path);
+        if !source.exists() {
+            return Err(format!("Source path does not exist: {}", source_path));
         }
-    } else {
-        target.to_path_buf()
-    };
+    }
 
     // Create target directory if it doesn't exist
-    if let Err(e) = fs::create_dir_all(&effective_target) {
+    if let Err(e) = fs::create_dir_all(target) {
         return Err(format!("Failed to create target directory: {}", e));
     }
 
+    // Build glob set from blacklist patterns
+    let glob_set = build_glob_set(&blacklist);
+
     // First pass: count total files for progress calculation
-    let total_count = count_files(&source_path, &blacklist, respect_gitignore);
+    let total_count = count_files_multi(&source_paths, &glob_set, respect_gitignore);
 
     let mut copied_count: u64 = 0;
+    let mut skipped_count: u64 = 0;
     let mut errors: Vec<String> = Vec::new();
 
-    // Build the walker with blacklist filtering
-    let mut builder = WalkBuilder::new(source);
-    builder
-        .hidden(false) // Don't skip hidden files by default
-        .git_ignore(respect_gitignore) // Optionally respect .gitignore files
-        .git_global(false)
-        .git_exclude(respect_gitignore);
+    // Process each source path
+    for source_path in &source_paths {
+        let source = Path::new(source_path);
 
-    let walker = builder.build();
+        if source.is_file() {
+            // Handle single file
+            if let Some(file_name) = source.file_name() {
+                let mut dest_path = target.join(file_name);
 
-    for entry in walker {
-        match entry {
-            Ok(dir_entry) => {
-                let path = dir_entry.path();
+                // Check blacklist
+                if is_blacklisted(Path::new(file_name), &glob_set) {
+                    continue;
+                }
 
-                // Skip blacklisted directories
-                if path.is_dir() {
-                    if let Some(name) = path.file_name() {
-                        if blacklist.contains(&name.to_string_lossy().to_string()) {
+                // Handle collision
+                if dest_path.exists() {
+                    match collision_mode.as_str() {
+                        "skip" => {
+                            skipped_count += 1;
                             continue;
                         }
+                        "rename" => {
+                            dest_path = find_available_name(&dest_path);
+                        }
+                        _ => {} // overwrite
                     }
                 }
 
-                // Calculate relative path from source
-                let relative_path = match path.strip_prefix(source) {
-                    Ok(p) => p,
-                    Err(_) => continue,
-                };
-
-                let dest_path = effective_target.join(relative_path);
-
-                if path.is_dir() {
-                    // Check if this directory or any parent is blacklisted
-                    let should_skip = relative_path.components().any(|c| {
-                        if let std::path::Component::Normal(name) = c {
-                            blacklist.contains(&name.to_string_lossy().to_string())
-                        } else {
-                            false
-                        }
-                    });
-
-                    if should_skip {
-                        continue;
+                match fs::copy(source, &dest_path) {
+                    Ok(_) => {
+                        copied_count += 1;
+                        let _ = app.emit(
+                            "backup-progress",
+                            BackupProgress {
+                                current_file: file_name.to_string_lossy().to_string(),
+                                copied_count,
+                                skipped_count,
+                                total_count,
+                            },
+                        );
                     }
-
-                    // Create directory in target
-                    if let Err(e) = fs::create_dir_all(&dest_path) {
-                        errors.push(format!("Failed to create dir {:?}: {}", dest_path, e));
+                    Err(e) => {
+                        errors.push(format!("Failed to copy {:?}: {}", source, e));
                         let _ = app.emit(
                             "backup-error",
                             BackupError {
                                 message: e.to_string(),
-                                file: Some(path.to_string_lossy().to_string()),
+                                file: Some(source_path.clone()),
                             },
                         );
                     }
-                } else if path.is_file() {
-                    // Check if any parent directory is blacklisted
-                    let should_skip = relative_path.components().any(|c| {
-                        if let std::path::Component::Normal(name) = c {
-                            blacklist.contains(&name.to_string_lossy().to_string())
-                        } else {
-                            false
-                        }
-                    });
-
-                    if should_skip {
-                        continue;
-                    }
-
-                    // Ensure parent directory exists
-                    if let Some(parent) = dest_path.parent() {
-                        if let Err(e) = fs::create_dir_all(parent) {
-                            errors.push(format!("Failed to create parent dir {:?}: {}", parent, e));
-                            continue;
-                        }
-                    }
-
-                    // Copy the file
-                    match fs::copy(path, &dest_path) {
-                        Ok(_) => {
-                            copied_count += 1;
-
-                            // Emit progress event
-                            let _ = app.emit(
-                                "backup-progress",
-                                BackupProgress {
-                                    current_file: relative_path.to_string_lossy().to_string(),
-                                    copied_count,
-                                    total_count,
-                                },
-                            );
-                        }
-                        Err(e) => {
-                            errors.push(format!("Failed to copy {:?}: {}", path, e));
-                            let _ = app.emit(
-                                "backup-error",
-                                BackupError {
-                                    message: e.to_string(),
-                                    file: Some(path.to_string_lossy().to_string()),
-                                },
-                            );
-                        }
-                    }
                 }
             }
-            Err(e) => {
-                errors.push(format!("Walker error: {}", e));
+        } else if source.is_dir() {
+            // Handle directory
+            let effective_target = if include_source_dir {
+                if let Some(source_name) = source.file_name() {
+                    target.join(source_name)
+                } else {
+                    target.to_path_buf()
+                }
+            } else {
+                target.to_path_buf()
+            };
+
+            if let Err(e) = fs::create_dir_all(&effective_target) {
+                errors.push(format!("Failed to create target dir {:?}: {}", effective_target, e));
+                continue;
+            }
+
+            // Build the walker
+            let mut builder = WalkBuilder::new(source);
+            builder
+                .hidden(false)
+                .git_ignore(respect_gitignore)
+                .git_global(false)
+                .git_exclude(respect_gitignore);
+
+            let walker = builder.build();
+
+            for entry in walker {
+                match entry {
+                    Ok(dir_entry) => {
+                        let path = dir_entry.path();
+
+                        // Calculate relative path from source
+                        let relative_path = match path.strip_prefix(source) {
+                            Ok(p) => p,
+                            Err(_) => continue,
+                        };
+
+                        // Skip if blacklisted
+                        if is_blacklisted(relative_path, &glob_set) {
+                            continue;
+                        }
+
+                        let mut dest_path = effective_target.join(relative_path);
+
+                        if path.is_dir() {
+                            if let Err(e) = fs::create_dir_all(&dest_path) {
+                                errors.push(format!("Failed to create dir {:?}: {}", dest_path, e));
+                                let _ = app.emit(
+                                    "backup-error",
+                                    BackupError {
+                                        message: e.to_string(),
+                                        file: Some(path.to_string_lossy().to_string()),
+                                    },
+                                );
+                            }
+                        } else if path.is_file() {
+                            // Ensure parent directory exists
+                            if let Some(parent) = dest_path.parent() {
+                                if let Err(e) = fs::create_dir_all(parent) {
+                                    errors.push(format!("Failed to create parent dir {:?}: {}", parent, e));
+                                    continue;
+                                }
+                            }
+
+                            // Handle collision
+                            if dest_path.exists() {
+                                match collision_mode.as_str() {
+                                    "skip" => {
+                                        skipped_count += 1;
+                                        continue;
+                                    }
+                                    "rename" => {
+                                        dest_path = find_available_name(&dest_path);
+                                    }
+                                    _ => {} // overwrite
+                                }
+                            }
+
+                            // Copy the file
+                            match fs::copy(path, &dest_path) {
+                                Ok(_) => {
+                                    copied_count += 1;
+                                    let _ = app.emit(
+                                        "backup-progress",
+                                        BackupProgress {
+                                            current_file: relative_path.to_string_lossy().to_string(),
+                                            copied_count,
+                                            skipped_count,
+                                            total_count,
+                                        },
+                                    );
+                                }
+                                Err(e) => {
+                                    errors.push(format!("Failed to copy {:?}: {}", path, e));
+                                    let _ = app.emit(
+                                        "backup-error",
+                                        BackupError {
+                                            message: e.to_string(),
+                                            file: Some(path.to_string_lossy().to_string()),
+                                        },
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        errors.push(format!("Walker error: {}", e));
+                    }
+                }
             }
         }
     }
 
     let message = if errors.is_empty() {
-        format!("Successfully copied {} files", copied_count)
+        if skipped_count > 0 {
+            format!("Copied {} files, skipped {}", copied_count, skipped_count)
+        } else {
+            format!("Successfully copied {} files", copied_count)
+        }
     } else {
         format!(
             "Copied {} files with {} errors",
@@ -195,45 +325,48 @@ async fn backup_directory(
     let result = BackupComplete {
         success: errors.is_empty(),
         copied_count,
-        message: message.clone(),
+        skipped_count,
+        message,
     };
 
-    // Emit completion event
     let _ = app.emit("backup-complete", result.clone());
 
     Ok(result)
 }
 
 /// Count total files to copy (for progress calculation)
-fn count_files(source_path: &str, blacklist: &[String], respect_gitignore: bool) -> u64 {
-    let source = Path::new(source_path);
+fn count_files_multi(source_paths: &[String], glob_set: &GlobSet, respect_gitignore: bool) -> u64 {
     let mut count: u64 = 0;
 
-    let mut builder = WalkBuilder::new(source);
-    builder
-        .hidden(false)
-        .git_ignore(respect_gitignore)
-        .git_global(false)
-        .git_exclude(respect_gitignore);
-    let walker = builder.build();
+    for source_path in source_paths {
+        let source = Path::new(source_path);
 
-    for entry in walker {
-        if let Ok(dir_entry) = entry {
-            let path = dir_entry.path();
+        if source.is_file() {
+            // Single file
+            if let Some(file_name) = source.file_name() {
+                if !is_blacklisted(Path::new(file_name), glob_set) {
+                    count += 1;
+                }
+            }
+        } else if source.is_dir() {
+            let mut builder = WalkBuilder::new(source);
+            builder
+                .hidden(false)
+                .git_ignore(respect_gitignore)
+                .git_global(false)
+                .git_exclude(respect_gitignore);
+            let walker = builder.build();
 
-            if path.is_file() {
-                // Check if any component is blacklisted
-                if let Ok(relative) = path.strip_prefix(source) {
-                    let should_skip = relative.components().any(|c| {
-                        if let std::path::Component::Normal(name) = c {
-                            blacklist.contains(&name.to_string_lossy().to_string())
-                        } else {
-                            false
+            for entry in walker {
+                if let Ok(dir_entry) = entry {
+                    let path = dir_entry.path();
+
+                    if path.is_file() {
+                        if let Ok(relative) = path.strip_prefix(source) {
+                            if !is_blacklisted(relative, glob_set) {
+                                count += 1;
+                            }
                         }
-                    });
-
-                    if !should_skip {
-                        count += 1;
                     }
                 }
             }
