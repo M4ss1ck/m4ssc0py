@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "M4SS C0PY",
+        "title": "m4ssc0py",
         "width": 600,
         "height": 300,
         "resizable": false
@@ -31,6 +31,28 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "Utility",
+    "shortDescription": "A file copy utility",
+    "longDescription": "m4ssc0py is a cross-platform file copy utility with progress tracking and error reporting.",
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false
+      },
+      "deb": {
+        "depends": []
+      },
+      "rpm": {
+        "depends": []
+      }
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    }
   }
 }
