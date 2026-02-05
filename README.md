@@ -1,7 +1,29 @@
-# Tauri + Preact + Typescript
+# m4ssc0py
 
-This template should help get you started developing with Tauri, Preact and Typescript in Vite.
+A lightweight desktop file backup utility built with Tauri.
 
-## Recommended IDE Setup
+## Features
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- Copy files and folders to a target directory
+- Drag-and-drop support for source and target paths
+- Blacklist patterns to exclude files (glob syntax)
+- Respect `.gitignore` rules
+- Collision handling: overwrite, skip, or rename
+- Real-time progress tracking
+
+## Development
+
+```bash
+pnpm install
+pnpm tauri dev
+```
+
+## Build
+
+```bash
+pnpm tauri build
+```
+
+## License
+
+MIT
