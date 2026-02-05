@@ -1,4 +1,4 @@
-import { useEffect } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -77,11 +77,13 @@ function FormScreen() {
   const {
     sourcePath,
     targetPath,
+    targetHistory,
     blacklist,
     respectGitignore,
     includeSourceDir,
     setSourcePath,
     setTargetPath,
+    addToTargetHistory,
     addBlacklistItem,
     removeBlacklistItem,
     setRespectGitignore,
@@ -94,6 +96,8 @@ function FormScreen() {
     setMessage,
     setSuccess,
   } = useBackupStore();
+
+  const [showTargetDropdown, setShowTargetDropdown] = useState(false);
 
   const browseSource = async () => {
     const selected = await open({
@@ -131,6 +135,8 @@ function FormScreen() {
       return;
     }
 
+    addToTargetHistory(targetPath);
+
     setScreen("progress");
     setProgress(0);
     setCopiedCount(0);
@@ -166,14 +172,32 @@ function FormScreen() {
             📁
           </button>
         </div>
-        <div class="path-row">
+        <div class="path-row target-row">
           <span class="path-label">To</span>
-          <input
-            type="text"
-            value={targetPath}
-            onInput={(e) => setTargetPath(e.currentTarget.value)}
-            placeholder="Target directory..."
-          />
+          <div class="target-input-wrapper">
+            <input
+              type="text"
+              value={targetPath}
+              onInput={(e) => setTargetPath(e.currentTarget.value)}
+              onFocus={() => setShowTargetDropdown(true)}
+              onBlur={() => setTimeout(() => setShowTargetDropdown(false), 150)}
+              placeholder="Target directory..."
+            />
+            {showTargetDropdown && targetHistory.length > 0 && (
+              <div class="target-dropdown">
+                {targetHistory.map((path) => (
+                  <button
+                    key={path}
+                    type="button"
+                    class="target-dropdown-item"
+                    onMouseDown={() => setTargetPath(path)}
+                  >
+                    {path}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button type="button" onClick={browseTarget} class="browse-btn">
             📁
           </button>

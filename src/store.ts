@@ -10,12 +10,14 @@ interface BackupState {
   // Form data
   sourcePath: string;
   targetPath: string;
+  targetHistory: string[];
   blacklist: string[];
   respectGitignore: boolean;
   includeSourceDir: boolean;
 
   setSourcePath: (path: string) => void;
   setTargetPath: (path: string) => void;
+  addToTargetHistory: (path: string) => void;
   addBlacklistItem: (item: string) => void;
   removeBlacklistItem: (item: string) => void;
   setRespectGitignore: (value: boolean) => void;
@@ -51,6 +53,7 @@ const initialState = {
   currentScreen: 'form' as Screen,
   sourcePath: '',
   targetPath: '',
+  targetHistory: [] as string[],
   blacklist: ['node_modules', '.git', 'dist', 'target', 'build'],
   respectGitignore: false,
   includeSourceDir: true,
@@ -71,6 +74,11 @@ export const useBackupStore = create<BackupState>((set) => ({
 
   setSourcePath: (path) => set({ sourcePath: path }),
   setTargetPath: (path) => set({ targetPath: path }),
+  addToTargetHistory: (path) => set((state) => ({
+    targetHistory: state.targetHistory.includes(path)
+      ? state.targetHistory
+      : [path, ...state.targetHistory].slice(0, 10)
+  })),
   addBlacklistItem: (item) => set((state) => ({
     blacklist: state.blacklist.includes(item) ? state.blacklist : [...state.blacklist, item]
   })),
@@ -90,5 +98,5 @@ export const useBackupStore = create<BackupState>((set) => ({
   setMessage: (message) => set({ message }),
   addError: (error) => set((state) => ({ errors: [...state.errors, error] })),
 
-  reset: () => set(initialState),
+  reset: () => set((state) => ({ ...initialState, targetHistory: state.targetHistory })),
 }));
