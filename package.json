@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "build:linux": "tauri build --target x86_64-unknown-linux-gnu",
-    "build:windows": "tauri build --target x86_64-pc-windows-gnu"
+    "build:windows": "tauri build --target x86_64-pc-windows-gnu",
+    "release": "./scripts/release.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
