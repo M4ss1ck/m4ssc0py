@@ -76,12 +76,14 @@ function ChipCarousel({ items, onRemove }: { items: string[]; onRemove: (item: s
 function FormScreen() {
   const {
     sourcePath,
+    sourceHistory,
     targetPath,
     targetHistory,
     blacklist,
     respectGitignore,
     includeSourceDir,
     setSourcePath,
+    addToSourceHistory,
     setTargetPath,
     addToTargetHistory,
     addBlacklistItem,
@@ -97,6 +99,7 @@ function FormScreen() {
     setSuccess,
   } = useBackupStore();
 
+  const [showSourceDropdown, setShowSourceDropdown] = useState(false);
   const [showTargetDropdown, setShowTargetDropdown] = useState(false);
 
   const browseSource = async () => {
@@ -135,6 +138,7 @@ function FormScreen() {
       return;
     }
 
+    addToSourceHistory(sourcePath);
     addToTargetHistory(targetPath);
 
     setScreen("progress");
@@ -160,14 +164,32 @@ function FormScreen() {
   return (
     <div class="screen form-screen">
       <div class="path-inputs">
-        <div class="path-row">
+        <div class="path-row source-row">
           <span class="path-label">From</span>
-          <input
-            type="text"
-            value={sourcePath}
-            onInput={(e) => setSourcePath(e.currentTarget.value)}
-            placeholder="Source directory..."
-          />
+          <div class="source-input-wrapper">
+            <input
+              type="text"
+              value={sourcePath}
+              onInput={(e) => setSourcePath(e.currentTarget.value)}
+              onFocus={() => setShowSourceDropdown(true)}
+              onBlur={() => setTimeout(() => setShowSourceDropdown(false), 150)}
+              placeholder="Source directory..."
+            />
+            {showSourceDropdown && sourceHistory.length > 0 && (
+              <div class="source-dropdown">
+                {sourceHistory.map((path) => (
+                  <button
+                    key={path}
+                    type="button"
+                    class="source-dropdown-item"
+                    onMouseDown={() => setSourcePath(path)}
+                  >
+                    {path}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button type="button" onClick={browseSource} class="browse-btn">
             📁
           </button>
