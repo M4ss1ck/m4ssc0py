@@ -58,7 +58,7 @@ const initialState = {
   sourceHistory: [] as string[],
   targetPath: '',
   targetHistory: [] as string[],
-  blacklist: ['node_modules', '.git', 'dist', 'target', 'build'],
+  blacklist: ['node_modules', 'dist'],
   respectGitignore: false,
   includeSourceDir: true,
   progress: 0,
@@ -109,7 +109,14 @@ export const useBackupStore = create<BackupState>()(
       setMessage: (message) => set({ message }),
       addError: (error) => set((state) => ({ errors: [...state.errors, error] })),
 
-      reset: () => set((state) => ({ ...initialState, sourceHistory: state.sourceHistory, targetHistory: state.targetHistory })),
+      reset: () => set((state) => ({
+        ...initialState,
+        sourceHistory: state.sourceHistory,
+        targetHistory: state.targetHistory,
+        blacklist: state.blacklist,
+        respectGitignore: state.respectGitignore,
+        includeSourceDir: state.includeSourceDir,
+      })),
     }),
     {
       name: 'm4ssc0py-storage',
