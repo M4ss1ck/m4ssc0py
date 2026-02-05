@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 type Screen = 'form' | 'progress' | 'complete';
 
@@ -9,13 +10,17 @@ interface BackupState {
 
   // Form data
   sourcePath: string;
+  sourceHistory: string[];
   targetPath: string;
+  targetHistory: string[];
   blacklist: string[];
   respectGitignore: boolean;
   includeSourceDir: boolean;
 
   setSourcePath: (path: string) => void;
+  addToSourceHistory: (path: string) => void;
   setTargetPath: (path: string) => void;
+  addToTargetHistory: (path: string) => void;
   addBlacklistItem: (item: string) => void;
   removeBlacklistItem: (item: string) => void;
   setRespectGitignore: (value: boolean) => void;
@@ -50,8 +55,10 @@ interface BackupState {
 const initialState = {
   currentScreen: 'form' as Screen,
   sourcePath: '',
+  sourceHistory: [] as string[],
   targetPath: '',
-  blacklist: ['node_modules', '.git', 'dist', 'target', 'build'],
+  targetHistory: [] as string[],
+  blacklist: ['node_modules', 'dist'],
   respectGitignore: false,
   includeSourceDir: true,
   progress: 0,
@@ -64,31 +71,64 @@ const initialState = {
   errors: [],
 };
 
-export const useBackupStore = create<BackupState>((set) => ({
-  ...initialState,
+export const useBackupStore = create<BackupState>()(
+  persist(
+    (set) => ({
+      ...initialState,
 
-  setScreen: (screen) => set({ currentScreen: screen }),
+      setScreen: (screen) => set({ currentScreen: screen }),
 
-  setSourcePath: (path) => set({ sourcePath: path }),
-  setTargetPath: (path) => set({ targetPath: path }),
-  addBlacklistItem: (item) => set((state) => ({
-    blacklist: state.blacklist.includes(item) ? state.blacklist : [...state.blacklist, item]
-  })),
-  removeBlacklistItem: (item) => set((state) => ({
-    blacklist: state.blacklist.filter((i) => i !== item)
-  })),
-  setRespectGitignore: (value) => set({ respectGitignore: value }),
-  setIncludeSourceDir: (value) => set({ includeSourceDir: value }),
+      setSourcePath: (path) => set({ sourcePath: path }),
+      addToSourceHistory: (path) => set((state) => ({
+        sourceHistory: state.sourceHistory.includes(path)
+          ? state.sourceHistory
+          : [path, ...state.sourceHistory].slice(0, 10)
+      })),
+      setTargetPath: (path) => set({ targetPath: path }),
+      addToTargetHistory: (path) => set((state) => ({
+        targetHistory: state.targetHistory.includes(path)
+          ? state.targetHistory
+          : [path, ...state.targetHistory].slice(0, 10)
+      })),
+      addBlacklistItem: (item) => set((state) => ({
+        blacklist: state.blacklist.includes(item) ? state.blacklist : [...state.blacklist, item]
+      })),
+      removeBlacklistItem: (item) => set((state) => ({
+        blacklist: state.blacklist.filter((i) => i !== item)
+      })),
+      setRespectGitignore: (value) => set({ respectGitignore: value }),
+      setIncludeSourceDir: (value) => set({ includeSourceDir: value }),
 
-  setProgress: (progress) => set({ progress }),
-  setCurrentFile: (file) => set({ currentFile: file }),
-  setCurrentFileProgress: (progress) => set({ currentFileProgress: progress }),
-  setCopiedCount: (count) => set({ copiedCount: count }),
-  setTotalCount: (count) => set({ totalCount: count }),
+      setProgress: (progress) => set({ progress }),
+      setCurrentFile: (file) => set({ currentFile: file }),
+      setCurrentFileProgress: (progress) => set({ currentFileProgress: progress }),
+      setCopiedCount: (count) => set({ copiedCount: count }),
+      setTotalCount: (count) => set({ totalCount: count }),
 
-  setSuccess: (success) => set({ success }),
-  setMessage: (message) => set({ message }),
-  addError: (error) => set((state) => ({ errors: [...state.errors, error] })),
+      setSuccess: (success) => set({ success }),
+      setMessage: (message) => set({ message }),
+      addError: (error) => set((state) => ({ errors: [...state.errors, error] })),
 
-  reset: () => set(initialState),
-}));
+      reset: () => set((state) => ({
+        ...initialState,
+        sourceHistory: state.sourceHistory,
+        targetHistory: state.targetHistory,
+        blacklist: state.blacklist,
+        respectGitignore: state.respectGitignore,
+        includeSourceDir: state.includeSourceDir,
+      })),
+    }),
+    {
+      name: 'm4ssc0py-storage',
+      partialize: (state) => ({
+        sourcePath: state.sourcePath,
+        sourceHistory: state.sourceHistory,
+        targetPath: state.targetPath,
+        targetHistory: state.targetHistory,
+        blacklist: state.blacklist,
+        respectGitignore: state.respectGitignore,
+        includeSourceDir: state.includeSourceDir,
+      }),
+    }
+  )
+);

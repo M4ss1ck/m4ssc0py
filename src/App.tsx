@@ -1,4 +1,4 @@
-import { useEffect } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -76,12 +76,16 @@ function ChipCarousel({ items, onRemove }: { items: string[]; onRemove: (item: s
 function FormScreen() {
   const {
     sourcePath,
+    sourceHistory,
     targetPath,
+    targetHistory,
     blacklist,
     respectGitignore,
     includeSourceDir,
     setSourcePath,
+    addToSourceHistory,
     setTargetPath,
+    addToTargetHistory,
     addBlacklistItem,
     removeBlacklistItem,
     setRespectGitignore,
@@ -94,6 +98,9 @@ function FormScreen() {
     setMessage,
     setSuccess,
   } = useBackupStore();
+
+  const [showSourceDropdown, setShowSourceDropdown] = useState(false);
+  const [showTargetDropdown, setShowTargetDropdown] = useState(false);
 
   const browseSource = async () => {
     const selected = await open({
@@ -131,6 +138,9 @@ function FormScreen() {
       return;
     }
 
+    addToSourceHistory(sourcePath);
+    addToTargetHistory(targetPath);
+
     setScreen("progress");
     setProgress(0);
     setCopiedCount(0);
@@ -154,26 +164,62 @@ function FormScreen() {
   return (
     <div class="screen form-screen">
       <div class="path-inputs">
-        <div class="path-row">
+        <div class="path-row source-row">
           <span class="path-label">From</span>
-          <input
-            type="text"
-            value={sourcePath}
-            onInput={(e) => setSourcePath(e.currentTarget.value)}
-            placeholder="Source directory..."
-          />
+          <div class="source-input-wrapper">
+            <input
+              type="text"
+              value={sourcePath}
+              onInput={(e) => setSourcePath(e.currentTarget.value)}
+              onFocus={() => setShowSourceDropdown(true)}
+              onBlur={() => setTimeout(() => setShowSourceDropdown(false), 150)}
+              placeholder="Source directory..."
+            />
+            {showSourceDropdown && sourceHistory.length > 0 && (
+              <div class="source-dropdown">
+                {sourceHistory.map((path) => (
+                  <button
+                    key={path}
+                    type="button"
+                    class="source-dropdown-item"
+                    onMouseDown={() => setSourcePath(path)}
+                  >
+                    {path}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button type="button" onClick={browseSource} class="browse-btn">
             📁
           </button>
         </div>
-        <div class="path-row">
+        <div class="path-row target-row">
           <span class="path-label">To</span>
-          <input
-            type="text"
-            value={targetPath}
-            onInput={(e) => setTargetPath(e.currentTarget.value)}
-            placeholder="Target directory..."
-          />
+          <div class="target-input-wrapper">
+            <input
+              type="text"
+              value={targetPath}
+              onInput={(e) => setTargetPath(e.currentTarget.value)}
+              onFocus={() => setShowTargetDropdown(true)}
+              onBlur={() => setTimeout(() => setShowTargetDropdown(false), 150)}
+              placeholder="Target directory..."
+            />
+            {showTargetDropdown && targetHistory.length > 0 && (
+              <div class="target-dropdown">
+                {targetHistory.map((path) => (
+                  <button
+                    key={path}
+                    type="button"
+                    class="target-dropdown-item"
+                    onMouseDown={() => setTargetPath(path)}
+                  >
+                    {path}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button type="button" onClick={browseTarget} class="browse-btn">
             📁
           </button>
